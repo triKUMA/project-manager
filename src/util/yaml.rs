@@ -2,7 +2,7 @@ use std::{fs::File, io::BufReader};
 
 use color_eyre::Result;
 use serde::Deserialize;
-use serde_yaml::{Sequence, Value};
+use serde_yaml::{Mapping, Sequence, Value};
 
 pub fn load_yaml<T: for<'de> Deserialize<'de>>(path: &str) -> Result<T> {
     let file = File::open(path)?;
@@ -19,4 +19,12 @@ pub fn parse_unserialized_sequence(sequence: &mut Sequence) -> Result<&mut Seque
     }
 
     Ok(sequence)
+}
+
+pub fn soft_merge_mappings(base: &mut Mapping, merger: &Mapping) {
+    merger.iter().for_each(|(k, v)| {
+        if !base.contains_key(k) {
+            base.insert(k.clone(), v.clone());
+        }
+    });
 }

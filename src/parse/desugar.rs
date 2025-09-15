@@ -6,16 +6,28 @@ use serde_yaml::{Mapping, Value};
 use crate::util::yaml::*;
 
 pub fn desugar_yaml(yaml: &mut Mapping) -> Result<&mut Mapping> {
-    if let Some(root_workspaces) = yaml.get_mut("workspaces") {
-        desugar_workspaces(root_workspaces)?;
-    }
+    let keys: Vec<Value> = yaml.keys().cloned().collect();
+    for key in keys {
+        if !key.is_string() {
+            return Err(eyre!(
+                "invalid root key in yaml: {:#?}\nroot key must be a string",
+                key
+            ));
+        }
 
-    if let Some(root_state) = yaml.get_mut("state") {
-        desugar_state(root_state)?;
-    }
+        let key = key.as_str().unwrap();
+        let (base_key, shorthand_props) = desugar_property_shorthand(key)?;
+        if base_key != key
+            && let Some(mut value) = yaml.remove(key)
+        {
+            // normalize value to final format
+            
+            if let Some(value_mapping) = value.as_mapping_mut() {
+                soft_merge_mappings(value_mapping, &shorthand_props);
+            }
 
-    if let Some(root_commands) = yaml.get_mut("commands") {
-        desugar_commands(root_commands)?;
+            yaml.insert(Value::String(base_key.to_string()), value);
+        }
     }
 
     Ok(yaml)
@@ -46,11 +58,11 @@ pub fn desugar_commands(yaml: &mut Value) -> Result<&mut Value> {
     Ok(yaml)
 }
 
-pub fn desugar_property_shorthand(key: &str) -> Result<(&str, HashMap<String, Value>)> {
+pub fn desugar_property_shorthand(key: &str) -> Result<(&str, Mapping)> {
     let key_parts = key.split('?').collect::<Vec<_>>();
 
     if key_parts.len() == 1 {
-        return Ok((key_parts[0], HashMap::new()));
+        return Ok((key_parts[0], Mapping::new()));
     }
 
     if key_parts.len() > 2 {
@@ -61,7 +73,7 @@ pub fn desugar_property_shorthand(key: &str) -> Result<(&str, HashMap<String, Va
     }
 
     // TODO: handle the unwraps used here - should return readable errors instead
-    let mut query: HashMap<String, Value> = serde_qs::from_str(key_parts[1])?;
+    let mut query: Mapping = serde_qs::from_str(key_parts[1])?;
     query.iter_mut().for_each(|(_, v)| {
         if let Some(str_val) = v.as_str() {
             if str_val.is_empty() {
