@@ -20,7 +20,9 @@ opt-level = 3
 lto = "thin"
 
 [dependencies]
+camino = "1.2.0"
 color-eyre = "0.6.5"
-serde = { version = "1.0.221", features = ["derive"] }
+serde = { version = "1.0.223", features = ["derive"] }
+serde_qs = "0.15.0"
 serde_with = "3.14.0"
 serde_yaml = "0.9.34"
