@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use color_eyre::{Result, eyre::eyre};
-use serde::Deserialize;
-use serde_yaml::Value;
+use serde_yaml::{Mapping, Value};
 
-pub fn desugar_yaml(yaml: &mut Value) -> Result<&mut Value> {
+use crate::util::yaml::*;
+
+pub fn desugar_yaml(yaml: &mut Mapping) -> Result<&mut Mapping> {
     if let Some(root_workspaces) = yaml.get_mut("workspaces") {
         desugar_workspaces(root_workspaces)?;
     }
@@ -68,22 +69,10 @@ pub fn desugar_property_shorthand(key: &str) -> Result<(&str, HashMap<String, Va
             } else {
                 *v = serde_yaml::from_str::<Value>(str_val).unwrap();
             }
-        } else if v.is_sequence() {
-            parse_unserialized_sequence(v).unwrap();
+        } else if let Some(sequence) = v.as_sequence_mut() {
+            parse_unserialized_sequence(sequence).unwrap();
         }
     });
 
     Ok((key_parts[0], query))
-}
-
-pub fn parse_unserialized_sequence(sequence: &mut Value) -> Result<&mut Value> {
-    if let Some(sequence) = sequence.as_sequence_mut()
-        && sequence.iter().all(|item| item.is_string())
-    {
-        sequence.iter_mut().for_each(|item| {
-            *item = serde_yaml::from_str::<Value>(item.as_str().unwrap()).unwrap()
-        });
-    }
-
-    Ok(sequence)
 }
