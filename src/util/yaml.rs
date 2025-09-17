@@ -25,6 +25,10 @@ pub fn soft_merge_mappings(base: &mut Mapping, merger: &Mapping) {
     for (k, v) in merger.iter() {
         if !base.contains_key(k) {
             base.insert(k.clone(), v.clone());
+        } else if let Some(merger_child_mapping) = v.as_mapping()
+            && let Some(base_child_mapping) = base[k].as_mapping_mut()
+        {
+            soft_merge_mappings(base_child_mapping, merger_child_mapping);
         }
     }
 }
