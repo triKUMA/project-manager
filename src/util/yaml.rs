@@ -13,18 +13,18 @@ pub fn load_yaml<T: for<'de> Deserialize<'de>>(path: &str) -> Result<T> {
 
 pub fn parse_unserialized_sequence(sequence: &mut Sequence) -> Result<&mut Sequence> {
     if sequence.iter().all(|item| item.is_string()) {
-        sequence.iter_mut().for_each(|item| {
-            *item = serde_yaml::from_str::<Value>(item.as_str().unwrap()).unwrap()
-        });
+        for item in sequence.iter_mut() {
+            *item = serde_yaml::from_str::<Value>(item.as_str().unwrap())?
+        }
     }
 
     Ok(sequence)
 }
 
 pub fn soft_merge_mappings(base: &mut Mapping, merger: &Mapping) {
-    merger.iter().for_each(|(k, v)| {
+    for (k, v) in merger.iter() {
         if !base.contains_key(k) {
             base.insert(k.clone(), v.clone());
         }
-    });
+    }
 }
