@@ -46,6 +46,8 @@ pub fn normalize_state<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
 }
 
 pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut Mapping> {
+    println!("{path} - normalizing scope");
+
     /*
     scope can contain:
     - sub scopes (determined if all scope mapping key values are mappings)
@@ -68,6 +70,7 @@ pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
 
     // process variables and normalize
     if !variable_keys.is_empty() {
+        println!("{path} - processing variables");
         if !yaml.contains_key("variables") {
             yaml.insert(
                 Value::String("variables".to_string()),
@@ -76,7 +79,10 @@ pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
         }
 
         for var_key in variable_keys {
+            println!("{path} - processing variable: {}", var_key);
             let var_key_value = yaml.remove(format!("${}", var_key)).unwrap();
+
+            // TODO: update variable format from key: string to key: { value: string }. this will allow setting properties on variables (more future proof)
             yaml["variables"]
                 .as_mapping_mut()
                 .unwrap()
@@ -89,10 +95,11 @@ pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
         .keys()
         .cloned()
         .filter_map(|k| {
-            if let Some(k) = k.as_str()
-                && !SCOPE_RESERVED_KEYS.contains(&k)
+            if let Some(key) = k.as_str()
+                && !SCOPE_RESERVED_KEYS.contains(&get_base_key(key))
+                && yaml[key].is_string()
             {
-                Some(k.to_string())
+                Some(key.to_string())
             } else {
                 None
             }
@@ -103,6 +110,7 @@ pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
     if (yaml.contains_key("run") || !implicit_command_keys.is_empty())
         && !yaml.contains_key("commands")
     {
+        println!("{path} - processing run and implicit commands");
         yaml.insert(
             Value::String("commands".to_string()),
             Value::Mapping(Mapping::new()),
@@ -110,6 +118,7 @@ pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
     }
 
     if let Some(run_val) = yaml.remove("run") {
+        println!("{path} - processing run: {:?}", run_val);
         yaml["commands"]
             .as_mapping_mut()
             .unwrap()
@@ -117,6 +126,10 @@ pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
     }
 
     for implicit_command_key in implicit_command_keys {
+        println!(
+            "{path} - processing implicit command: {}",
+            implicit_command_key
+        );
         let implicit_command_key_value = yaml.remove(implicit_command_key.clone()).unwrap();
         yaml["commands"].as_mapping_mut().unwrap().insert(
             Value::String(implicit_command_key),
@@ -124,13 +137,31 @@ pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
         );
     }
 
+    // TODO: need to fix shorthand properties on reserved keys being consumed and not mapped to tasks
+    // should be fixed when command is mapped to sequence, but broken for now while its still a string value
     normalize_mapping(path, yaml, |key, value| match key {
-        "in" => Ok(()),
-        "pre" => Ok(()),
-        "post" => Ok(()),
-        "commands" => Ok(()),
-        _ if SCOPE_RESERVED_KEYS.contains(&key) => Ok(()),
+        "in" => {
+            println!("{path} - processing 'in' (in): {:?}", value);
+            Ok(())
+        }
+        "pre" => {
+            println!("{path} - processing 'pre' (pre): {:?}", value);
+            Ok(())
+        }
+        "post" => {
+            println!("{path} - processing 'post' (post): {:?}", value);
+            Ok(())
+        }
+        "commands" => {
+            println!("{path} - processing 'commands' (commands): {:?}", value);
+            Ok(())
+        }
+        _ if SCOPE_RESERVED_KEYS.contains(&key) => {
+            println!("{path} - processing '{key}' (reserved): {:?}", value);
+            Ok(())
+        }
         _ if value.is_mapping() => {
+            println!("{path} - processing '{key}' (sub scope): {:?}", value);
             normalize_scope(
                 format!("{}.{}", path, key).as_str(),
                 value.as_mapping_mut().unwrap(),
@@ -138,8 +169,13 @@ pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
 
             Ok(())
         }
-        _ => Ok(()),
+        _ => {
+            println!("{path} - processing '{path}.{key}' (custom): {:?}", value);
+            Ok(())
+        }
     })?;
+
+    println!("{path} - scope normalized");
 
     Ok(yaml)
 }
@@ -147,62 +183,6 @@ pub fn normalize_scope<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut 
 pub fn normalize_runners<'a>(path: &str, yaml: &'a mut Mapping) -> Result<&'a mut Mapping> {
     Ok(yaml)
 }
-
-// pub fn normalize_commands(yaml: &mut Mapping) -> Result<()> {
-//     // if mapping
-//     // - if has commands key, process sub commands
-//     // if key starts with '!'
-//     // - update scope to include 'in: {scope_name}'
-//     // DONT expand glob patterns in this step - should be done in canonizing step when scopes have been extracted
-//     // ensure implicit commands map doesn't contain any reserved keywords as keys before normalizing
-//     // reserved keywords: run, commands, in, pre, post, background
-//     // ensure variables are not counted in implicit commands map - should require explicit commands map if using variables
-//     // process leaf commands to expand into anonymous/unnamed tasks
-
-//     normalize_mapping(yaml, |key, value| {
-//         if let Some(value_mapping) = value.as_mapping_mut() {
-//             if value_mapping.contains_key("run") {
-//                 if !value_mapping.contains_key("commands") {
-//                     value_mapping.insert(
-//                         Value::String("commands".to_string()),
-//                         Value::Mapping(Mapping::new()),
-//                     );
-//                 }
-
-//                 let run = value_mapping.remove("run").unwrap();
-
-//                 let scope_commands_mapping = value_mapping["commands"].as_mapping_mut().unwrap();
-
-//                 if scope_commands_mapping.contains_key(".") {
-//                     return Err(eyre!("duplicate root command in yaml: {}", key));
-//                 }
-
-//                 scope_commands_mapping.insert(Value::String(".".to_string()), run);
-//             } else if !value_mapping.contains_key("commands") {
-//                 if value_mapping.iter().all(|(k, v)| v.is_string()) {
-//                     let keys = value_mapping.keys().cloned().collect::<Vec<_>>();
-//                     let mut commands_mapping = Mapping::new();
-//                     commands_mapping.extend(keys.into_iter().map(|k| {
-//                         (
-//                             k.clone(),
-//                             value_mapping.remove(k.as_str().unwrap()).unwrap(),
-//                         )
-//                     }));
-//                     value_mapping.insert(
-//                         Value::String("commands".to_string()),
-//                         Value::Mapping(commands_mapping),
-//                     );
-//                 } else {
-//                     normalize_commands(value_mapping)?;
-//                 }
-//             }
-//         }
-
-//         Ok(())
-//     })?;
-
-//     Ok(())
-// }
 
 pub fn normalize_key<'a>(path: &str, key: &'a str) -> Result<(&'a str, Mapping)> {
     let implicit_scope = key.starts_with('!');
@@ -254,6 +234,14 @@ pub fn normalize_key<'a>(path: &str, key: &'a str) -> Result<(&'a str, Mapping)>
     Ok((key_parts[0], query))
 }
 
+pub fn get_base_key(key: &str) -> &str {
+    key.strip_prefix('!')
+        .unwrap_or(key)
+        .split('?')
+        .next()
+        .unwrap()
+}
+
 pub fn normalize_mapping<'a, F>(
     path: &str,
     yaml: &'a mut Mapping,
@@ -275,11 +263,33 @@ where
         let (base_key, shorthand_props) = normalize_key(path, key)?;
 
         if let Some(mut value) = yaml.remove(key) {
-            // Process the value using the provided closure
-            value_processor(base_key, &mut value)?;
+            let mut props_pre_merged = false;
 
             if let Some(value_mapping) = value.as_mapping_mut() {
                 soft_merge_mappings(value_mapping, &shorthand_props);
+                props_pre_merged = true;
+            } else if let Some(value_sequence) = value.as_sequence_mut() {
+                for item in value_sequence.iter_mut() {
+                    if let Some(item_mapping) = item.as_mapping_mut() {
+                        soft_merge_mappings(item_mapping, &shorthand_props);
+                        props_pre_merged = true;
+                    }
+                }
+            }
+
+            // Process the value using the provided closure
+            value_processor(base_key, &mut value)?;
+
+            if !props_pre_merged {
+                if let Some(value_mapping) = value.as_mapping_mut() {
+                    soft_merge_mappings(value_mapping, &shorthand_props);
+                } else if let Some(value_sequence) = value.as_sequence_mut() {
+                    for item in value_sequence.iter_mut() {
+                        if let Some(item_mapping) = item.as_mapping_mut() {
+                            soft_merge_mappings(item_mapping, &shorthand_props);
+                        }
+                    }
+                }
             }
 
             yaml.insert(Value::String(base_key.to_string()), value);
