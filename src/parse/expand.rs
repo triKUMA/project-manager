@@ -63,88 +63,23 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
     - implicit commands map (determined if all scope mapping key values are strings)
      */
 
-    // extract any keys in scope that are variables
-    let variable_keys = value
-        .keys()
-        .cloned()
-        .filter_map(|k| {
-            if let Some(k) = k.as_str() {
-                k.strip_prefix('$').map(|k| k.to_string())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    // process variables and normalize
-    if !variable_keys.is_empty() {
-        if !value.contains_key("variables") {
-            value.insert(
-                Value::String("variables".to_string()),
-                Value::Mapping(Mapping::new()),
-            );
-        }
-
-        for var_key in variable_keys {
-            let var_key_value = value.remove(format!("${}", var_key)).unwrap();
-
-            println!(
-                "{key} - processing '${var_key}' (variable): {:?}",
-                var_key_value
-            );
-
-            // TODO: update variable format from key: string to key: { value: string }. this will allow setting properties on variables (more future proof)
-            value["variables"]
-                .as_mapping_mut()
-                .unwrap()
-                .insert(Value::String(var_key), var_key_value);
-        }
+    // process shorthand variables if any exist
+    let shorthand_variable_keys = get_shorthand_variable_keys(value);
+    if !shorthand_variable_keys.is_empty() {
+        expand_shorthand_variables(key, value, shorthand_variable_keys)?;
     }
 
-    // get run key and list of implicit command keys
-    let run_key = value
-        .iter()
-        .find(|(k, _)| {
-            if let Some(k) = k.as_str() {
-                desugar::get_base_key(k, false) == "run"
-            } else {
-                false
-            }
-        })
-        .map(|(k, _)| k.as_str().unwrap().to_string());
-
-    let implicit_command_keys = value
-        .keys()
-        .cloned()
-        .filter_map(|k| {
-            if let Some(key) = k.as_str()
-                && !constants::SCOPE_RESERVED_KEYS.contains(&desugar::get_base_key(key, true))
-                && value[key].is_string()
-            {
-                Some(key.to_string())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    // add commands key if it doesnt exist yet but will be needed
-    if (run_key.is_some() || !implicit_command_keys.is_empty()) && !value.contains_key("commands") {
-        value.insert(
-            Value::String("commands".to_string()),
-            Value::Mapping(Mapping::new()),
-        );
-    }
-
-    if let Some(run_key) = run_key {
+    // process run key if it exists
+    if let Some(run_key) = get_run_key(value) {
         expand_run(key, value, &run_key)?;
     }
 
+    // process implicit command keys if any exist
+    let implicit_command_keys = get_implicit_command_keys(value);
     if !implicit_command_keys.is_empty() {
         expand_implicit_commands(key, value, implicit_command_keys)?;
     }
 
-    // TODO: could move a lot of the logic above down into the map_mapping below
     yaml::map_mapping(
         value,
         |child_key, child_value| match desugar::get_base_key(child_key, true) {
@@ -208,6 +143,62 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
     Ok(value)
 }
 
+pub fn get_shorthand_variable_keys(scope: &mut Mapping) -> Vec<String> {
+    scope
+        .keys()
+        .cloned()
+        .filter_map(|k| {
+            if let Some(k) = k.as_str() {
+                k.strip_prefix('$').map(|k| k.to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+pub fn expand_shorthand_variables<'a>(
+    scope_path: &str,
+    scope: &'a mut Mapping,
+    shorthand_variable_keys: Vec<String>,
+) -> Result<&'a mut Mapping> {
+    if !scope.contains_key("variables") {
+        scope.insert(
+            Value::String("variables".to_string()),
+            Value::Mapping(Mapping::new()),
+        );
+    }
+
+    for var_key in shorthand_variable_keys {
+        let var_key_value = scope.remove(format!("${}", var_key)).unwrap();
+
+        println!(
+            "{scope_path} - processing '${var_key}' (variable): {:?}",
+            var_key_value
+        );
+
+        scope["variables"]
+            .as_mapping_mut()
+            .unwrap()
+            .insert(Value::String(var_key), var_key_value);
+    }
+
+    Ok(scope)
+}
+
+pub fn get_run_key(scope: &mut Mapping) -> Option<String> {
+    scope
+        .iter()
+        .find(|(k, _)| {
+            if let Some(k) = k.as_str() {
+                desugar::get_base_key(k, false) == "run"
+            } else {
+                false
+            }
+        })
+        .map(|(k, _)| k.as_str().unwrap().to_string())
+}
+
 pub fn expand_run<'a>(
     scope_path: &str,
     scope: &'a mut Mapping,
@@ -232,11 +223,35 @@ pub fn expand_run<'a>(
     Ok(scope)
 }
 
+pub fn get_implicit_command_keys(scope: &mut Mapping) -> Vec<String> {
+    scope
+        .keys()
+        .cloned()
+        .filter_map(|k| {
+            if let Some(key) = k.as_str()
+                && !constants::SCOPE_RESERVED_KEYS.contains(&desugar::get_base_key(key, true))
+                && scope[key].is_string()
+            {
+                Some(key.to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
 pub fn expand_implicit_commands<'a>(
     scope_path: &str,
     scope: &'a mut Mapping,
     implicit_command_keys: Vec<String>,
 ) -> Result<&'a mut Mapping> {
+    if !scope.contains_key("commands") {
+        scope.insert(
+            Value::String("commands".to_string()),
+            Value::Mapping(Mapping::new()),
+        );
+    }
+
     for implicit_command_key in implicit_command_keys {
         let implicit_command_key_value = scope.remove(implicit_command_key.clone()).unwrap();
 
