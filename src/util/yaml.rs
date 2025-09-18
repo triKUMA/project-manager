@@ -1,6 +1,6 @@
 use std::{fs::File, io::BufReader};
 
-use color_eyre::Result;
+use color_eyre::{Result, eyre::eyre};
 use serde::Deserialize;
 use serde_yaml::{Mapping, Sequence, Value};
 
@@ -31,4 +31,24 @@ pub fn soft_merge_mappings(base: &mut Mapping, merger: &Mapping) {
             soft_merge_mappings(base_child_mapping, merger_child_mapping);
         }
     }
+}
+
+pub fn map_mapping<F>(yaml: &mut Mapping, mut value_processor: F) -> Result<&mut Mapping>
+where
+    F: FnMut(&str, &mut Value) -> Result<()>,
+{
+    let keys: Vec<Value> = yaml.keys().cloned().collect();
+    for key in keys {
+        if !key.is_string() {
+            return Err(eyre!(
+                "invalid root key in yaml: {:#?}\nroot key must be a string",
+                key
+            ));
+        }
+
+        // Process the value using the provided closure
+        value_processor(key.as_str().unwrap(), &mut yaml[key.clone()])?;
+    }
+
+    Ok(yaml)
 }
