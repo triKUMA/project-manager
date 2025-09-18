@@ -136,28 +136,12 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
         );
     }
 
-    if let Some(run_key) = run_key
-        && let Some(run_val) = value.remove(run_key.clone())
-    {
-        println!("{key} - processing '{run_key}' (run): {:?}", run_val);
-        value["commands"].as_mapping_mut().unwrap().insert(
-            Value::String(run_key.replace("run", ".").to_string()),
-            run_val,
-        );
+    if let Some(run_key) = run_key {
+        expand_run(key, value, &run_key)?;
     }
 
-    for implicit_command_key in implicit_command_keys {
-        let implicit_command_key_value = value.remove(implicit_command_key.clone()).unwrap();
-
-        println!(
-            "{key} - processing '{implicit_command_key}' (implicit command): {:?}",
-            implicit_command_key_value
-        );
-
-        value["commands"].as_mapping_mut().unwrap().insert(
-            Value::String(implicit_command_key),
-            implicit_command_key_value,
-        );
+    if !implicit_command_keys.is_empty() {
+        expand_implicit_commands(key, value, implicit_command_keys)?;
     }
 
     // TODO: could move a lot of the logic above down into the map_mapping below
@@ -166,6 +150,13 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
         |child_key, child_value| match desugar::get_base_key(child_key, true) {
             "in" => {
                 println!("{key} - processing '{child_key}' (in): {:?}", child_value);
+                Ok(())
+            }
+            "variables" => {
+                println!(
+                    "{key} - processing '{child_key}' (variables): {:?}",
+                    child_value
+                );
                 Ok(())
             }
             "pre" => {
@@ -215,4 +206,50 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
     println!("{key} - scope expanded");
 
     Ok(value)
+}
+
+pub fn expand_run<'a>(
+    scope_path: &str,
+    scope: &'a mut Mapping,
+    run_key: &str,
+) -> Result<&'a mut Mapping> {
+    if !scope.contains_key("commands") {
+        scope.insert(
+            Value::String("commands".to_string()),
+            Value::Mapping(Mapping::new()),
+        );
+    }
+
+    let run_val = scope.remove(run_key).unwrap();
+
+    println!("{scope_path} - processing '{run_key}' (run): {:?}", run_val);
+
+    scope["commands"].as_mapping_mut().unwrap().insert(
+        Value::String(run_key.replace("run", ".").to_string()),
+        run_val,
+    );
+
+    Ok(scope)
+}
+
+pub fn expand_implicit_commands<'a>(
+    scope_path: &str,
+    scope: &'a mut Mapping,
+    implicit_command_keys: Vec<String>,
+) -> Result<&'a mut Mapping> {
+    for implicit_command_key in implicit_command_keys {
+        let implicit_command_key_value = scope.remove(implicit_command_key.clone()).unwrap();
+
+        println!(
+            "{scope_path} - processing '{implicit_command_key}' (implicit command): {:?}",
+            implicit_command_key_value
+        );
+
+        scope["commands"].as_mapping_mut().unwrap().insert(
+            Value::String(implicit_command_key),
+            implicit_command_key_value,
+        );
+    }
+
+    Ok(scope)
 }
