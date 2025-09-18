@@ -78,7 +78,6 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
 
     // process variables and normalize
     if !variable_keys.is_empty() {
-        println!("{key} - processing variables");
         if !value.contains_key("variables") {
             value.insert(
                 Value::String("variables".to_string()),
@@ -87,8 +86,12 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
         }
 
         for var_key in variable_keys {
-            println!("{key} - processing variable: {}", var_key);
             let var_key_value = value.remove(format!("${}", var_key)).unwrap();
+
+            println!(
+                "{key} - processing '${var_key}' (variable): {:?}",
+                var_key_value
+            );
 
             // TODO: update variable format from key: string to key: { value: string }. this will allow setting properties on variables (more future proof)
             value["variables"]
@@ -127,7 +130,6 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
 
     // add commands key if it doesnt exist yet but will be needed
     if (run_key.is_some() || !implicit_command_keys.is_empty()) && !value.contains_key("commands") {
-        println!("{key} - processing run and implicit commands");
         value.insert(
             Value::String("commands".to_string()),
             Value::Mapping(Mapping::new()),
@@ -137,7 +139,7 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
     if let Some(run_key) = run_key
         && let Some(run_val) = value.remove(run_key.clone())
     {
-        println!("{key} - processing run: {:?}", run_val);
+        println!("{key} - processing '{run_key}' (run): {:?}", run_val);
         value["commands"].as_mapping_mut().unwrap().insert(
             Value::String(run_key.replace("run", ".").to_string()),
             run_val,
@@ -145,68 +147,72 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
     }
 
     for implicit_command_key in implicit_command_keys {
-        println!(
-            "{key} - processing implicit command: {}",
-            implicit_command_key
-        );
         let implicit_command_key_value = value.remove(implicit_command_key.clone()).unwrap();
+
+        println!(
+            "{key} - processing '{implicit_command_key}' (implicit command): {:?}",
+            implicit_command_key_value
+        );
+
         value["commands"].as_mapping_mut().unwrap().insert(
             Value::String(implicit_command_key),
             implicit_command_key_value,
         );
     }
 
-    // TODO: need to fix shorthand properties on reserved keys being consumed and not mapped to tasks
-    // should be fixed when command is mapped to sequence, but broken for now while its still a string value
-    yaml::map_mapping(value, |child_key, child_value| match child_key {
-        "in" => {
-            println!("{key} - processing 'in' (in): {:?}", child_value);
-            Ok(())
-        }
-        "pre" => {
-            println!("{key} - processing 'pre' (pre): {:?}", child_value);
-            Ok(())
-        }
-        "post" => {
-            println!("{key} - processing 'post' (post): {:?}", child_value);
-            Ok(())
-        }
-        "commands" => {
-            println!(
-                "{key} - processing 'commands' (commands): {:?}",
-                child_value
-            );
-            Ok(())
-        }
-        _ if constants::SCOPE_RESERVED_KEYS.contains(&child_key) => {
-            println!(
-                "{key} - processing '{child_key}' (reserved): {:?}",
-                child_value
-            );
-            Ok(())
-        }
-        _ if child_value.is_mapping() => {
-            println!(
-                "{key} - processing '{child_key}' (sub scope): {:?}",
-                child_value
-            );
-            expand_scope(
-                format!("{}.{}", child_key, child_key).as_str(),
-                child_value.as_mapping_mut().unwrap(),
-            )?;
+    // TODO: could move a lot of the logic above down into the map_mapping below
+    yaml::map_mapping(
+        value,
+        |child_key, child_value| match desugar::get_base_key(child_key, true) {
+            "in" => {
+                println!("{key} - processing '{child_key}' (in): {:?}", child_value);
+                Ok(())
+            }
+            "pre" => {
+                println!("{key} - processing '{child_key}' (pre): {:?}", child_value);
+                Ok(())
+            }
+            "post" => {
+                println!("{key} - processing '{child_key}' (post): {:?}", child_value);
+                Ok(())
+            }
+            "commands" => {
+                println!(
+                    "{key} - processing '{child_key}' (commands): {:?}",
+                    child_value
+                );
+                Ok(())
+            }
+            _ if constants::SCOPE_RESERVED_KEYS.contains(&child_key) => {
+                println!(
+                    "{key} - processing '{child_key}' (reserved): {:?}",
+                    child_value
+                );
+                Ok(())
+            }
+            _ if child_value.is_mapping() => {
+                println!(
+                    "{key} - processing '{child_key}' (sub scope): {:?}",
+                    child_value
+                );
+                expand_scope(
+                    format!("{}.{}", key, desugar::get_base_key(child_key, true)).as_str(),
+                    child_value.as_mapping_mut().unwrap(),
+                )?;
 
-            Ok(())
-        }
-        _ => {
-            println!(
-                "{key} - processing '{key}.{child_key}' (custom): {:?}",
-                child_value
-            );
-            Ok(())
-        }
-    })?;
+                Ok(())
+            }
+            _ => {
+                println!(
+                    "{key} - processing '{child_key}' (custom): {:?}",
+                    child_value
+                );
+                Ok(())
+            }
+        },
+    )?;
 
-    println!("{key} - scope normalized");
+    println!("{key} - scope expanded");
 
     Ok(value)
 }
