@@ -53,76 +53,93 @@ pub fn expand_state<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
     Ok(value)
 }
 
-pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Mapping> {
-    println!("{key} - expanding scope");
-
-    /*
-    scope can contain:
-    - sub scopes (determined if all scope mapping key values are mappings)
-    - pre, post, run, commands, variables (determined if all scope mapping keys are in SCOPE_RESERVED_KEYS)
-    - implicit commands map (determined if all scope mapping key values are strings)
-     */
+pub fn expand_scope<'a>(path: &str, scope: &'a mut Mapping) -> Result<&'a mut Mapping> {
+    println!("{path} - expanding scope");
 
     // process shorthand variables if any exist
-    let shorthand_variable_keys = get_shorthand_variable_keys(value);
+    let shorthand_variable_keys = get_shorthand_variable_keys(scope);
     if !shorthand_variable_keys.is_empty() {
-        expand_shorthand_variables(key, value, shorthand_variable_keys)?;
+        expand_shorthand_variables(path, scope, shorthand_variable_keys)?;
     }
 
     // process run key if it exists
-    if let Some(run_key) = get_run_key(value) {
-        expand_run(key, value, &run_key)?;
+    if has_key(scope, "run") {
+        expand_run(path, scope, "run")?;
     }
 
     // process implicit command keys if any exist
-    let implicit_command_keys = get_implicit_command_keys(value);
+    let implicit_command_keys = get_implicit_command_keys(scope);
     if !implicit_command_keys.is_empty() {
-        expand_implicit_commands(key, value, implicit_command_keys)?;
+        expand_implicit_commands(path, scope, implicit_command_keys)?;
     }
 
     yaml::map_mapping(
-        value,
+        scope,
         |child_key, child_value| match desugar::get_base_key(child_key, true) {
-            "in" => {
-                println!("{key} - processing '{child_key}' (in): {:?}", child_value);
-                Ok(())
-            }
             "variables" => {
                 println!(
-                    "{key} - processing '{child_key}' (variables): {:?}",
+                    "{path} - processing '{child_key}' (variables): {:?}",
                     child_value
                 );
+
+                expand_variables(
+                    format!("{path}.{}", desugar::get_base_key(child_key, true)).as_str(),
+                    child_value.as_mapping_mut().unwrap(),
+                )?;
+
                 Ok(())
             }
             "pre" => {
-                println!("{key} - processing '{child_key}' (pre): {:?}", child_value);
+                println!("{path} - processing '{child_key}' (pre): {:?}", child_value);
+
+                expand_task_collection(
+                    format!("{path}.{}", desugar::get_base_key(child_key, true)).as_str(),
+                    child_value,
+                )?;
+
                 Ok(())
             }
             "post" => {
-                println!("{key} - processing '{child_key}' (post): {:?}", child_value);
+                println!(
+                    "{path} - processing '{child_key}' (post): {:?}",
+                    child_value
+                );
+
+                expand_task_collection(
+                    format!("{path}.{}", desugar::get_base_key(child_key, true)).as_str(),
+                    child_value,
+                )?;
+
                 Ok(())
             }
             "commands" => {
                 println!(
-                    "{key} - processing '{child_key}' (commands): {:?}",
+                    "{path} - processing '{child_key}' (commands): {:?}",
                     child_value
                 );
+
+                expand_commands(
+                    format!("{path}.{}", desugar::get_base_key(child_key, true)).as_str(),
+                    child_value.as_mapping_mut().unwrap(),
+                )?;
+
                 Ok(())
             }
             _ if constants::SCOPE_RESERVED_KEYS.contains(&child_key) => {
                 println!(
-                    "{key} - processing '{child_key}' (reserved): {:?}",
+                    "{path} - processing '{child_key}' (reserved): {:?}",
                     child_value
                 );
                 Ok(())
             }
             _ if child_value.is_mapping() => {
                 println!(
-                    "{key} - processing '{child_key}' (sub scope): {:?}",
+                    "{path} - processing '{child_key}' (sub scope): {:?}",
                     child_value
                 );
+
                 expand_scope(
-                    format!("{}.{}", key, desugar::get_base_key(child_key, true)).as_str(),
+                    format!("{path}.{}", desugar::get_base_key(child_key, true)).as_str(),
                     child_value.as_mapping_mut().unwrap(),
                 )?;
 
@@ -130,7 +147,7 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
             }
             _ => {
                 println!(
-                    "{key} - processing '{child_key}' (custom): {:?}",
+                    "{path} - processing '{child_key}' (custom): {:?}",
                     child_value
                 );
                 Ok(())
@@ -138,9 +155,9 @@ pub fn expand_scope<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Map
         },
     )?;
 
-    println!("{key} - scope expanded");
+    println!("{path} - scope expanded");
 
-    Ok(value)
+    Ok(scope)
 }
 
 pub fn get_shorthand_variable_keys(scope: &mut Mapping) -> Vec<String> {
@@ -186,17 +203,33 @@ pub fn expand_shorthand_variables<'a>(
     Ok(scope)
 }
 
-pub fn get_run_key(scope: &mut Mapping) -> Option<String> {
-    scope
-        .iter()
-        .find(|(k, _)| {
-            if let Some(k) = k.as_str() {
-                desugar::get_base_key(k, false) == "run"
-            } else {
-                false
-            }
-        })
-        .map(|(k, _)| k.as_str().unwrap().to_string())
+pub fn expand_variables<'a>(path: &str, variables: &'a mut Mapping) -> Result<&'a mut Mapping> {
+    println!("{path} - expanding variables");
+
+    yaml::map_mapping(variables, |key, value| {
+        println!("{path} - processing '{key}' (variable): {:?}", value);
+
+        let mut var_mapping = Mapping::new();
+        var_mapping.insert(Value::String("value".to_string()), value.clone());
+
+        *value = Value::Mapping(var_mapping);
+
+        Ok(())
+    })?;
+
+    println!("{path} - variables expanded");
+
+    Ok(variables)
+}
+
+pub fn has_key(scope: &mut Mapping, key: &str) -> bool {
+    scope.iter().any(|(k, _)| {
+        if let Some(k) = k.as_str() {
+            desugar::get_base_key(k, false) == key
+        } else {
+            false
+        }
+    })
 }
 
 pub fn expand_run<'a>(
@@ -267,4 +300,57 @@ pub fn expand_implicit_commands<'a>(
     }
 
     Ok(scope)
+}
+
+pub fn expand_commands<'a>(path: &str, commands: &'a mut Mapping) -> Result<&'a mut Mapping> {
+    println!("{path} - expanding commands");
+
+    yaml::map_mapping(commands, |key, value| {
+        println!("{path} - processing '{key}' (command): {:?}", value);
+
+        expand_task_collection(
+            format!("{path}.{}", if key == "." { "\".\"" } else { key }).as_str(),
+            value,
+        )?;
+
+        Ok(())
+    })?;
+
+    println!("{path} - commands expanded");
+
+    Ok(commands)
+}
+
+pub fn expand_task_collection<'a>(
+    path: &str,
+    implicit_task_collection: &'a mut Value,
+) -> Result<&'a mut Value> {
+    println!("{path} - expanding task collection");
+
+    if !implicit_task_collection.is_mapping() {
+        let mut tasks_mapping = Mapping::new();
+        tasks_mapping.insert(
+            Value::String("tasks".to_string()),
+            implicit_task_collection.clone(),
+        );
+
+        *implicit_task_collection = Value::Mapping(tasks_mapping);
+    }
+
+    let task_collection = implicit_task_collection.get_mut("tasks").unwrap();
+
+    if task_collection.is_string() {
+        *task_collection = Value::Sequence(vec![task_collection.clone()]);
+    }
+
+    if !task_collection.is_sequence() {
+        return Err(eyre!(
+            "invalid command format in yaml: {:#?}\ncommand must be a string or array of strings",
+            task_collection
+        ));
+    }
+
+    println!("{path} - task collection expanded");
+
+    Ok(implicit_task_collection)
 }
