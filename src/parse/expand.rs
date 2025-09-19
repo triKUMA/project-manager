@@ -45,12 +45,62 @@ pub fn expand_yaml(yaml: &mut Mapping) -> Result<&mut Mapping> {
     Ok(yaml)
 }
 
-pub fn expand_workspaces<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Mapping> {
-    Ok(value)
+pub fn expand_workspaces<'a>(path: &str, workspaces: &'a mut Mapping) -> Result<&'a mut Mapping> {
+    println!("{path} - expanding workspaces");
+
+    println!("{path} - workspaces expanded");
+
+    Ok(workspaces)
 }
 
-pub fn expand_state<'a>(key: &str, value: &'a mut Mapping) -> Result<&'a mut Mapping> {
-    Ok(value)
+pub fn expand_state<'a>(path: &str, state: &'a mut Mapping) -> Result<&'a mut Mapping> {
+    println!("{path} - expanding state");
+
+    let shorthand_variable_keys = get_shorthand_variable_keys(state);
+    if !shorthand_variable_keys.is_empty() {
+        expand_shorthand_variables(path, state, shorthand_variable_keys)?;
+    }
+
+    yaml::map_mapping(
+        state,
+        |child_key, child_value| match desugar::get_base_key(child_key, true) {
+            "variables" => {
+                println!(
+                    "{path} - processing '{child_key}' (variables): {:?}",
+                    child_value
+                );
+
+                expand_variables(
+                    format!("{path}.{}", desugar::get_base_key(child_key, true)).as_str(),
+                    child_value.as_mapping_mut().unwrap(),
+                )?;
+
+                Ok(())
+            }
+            _ if constants::STATE_RESERVED_KEYS.contains(&child_key) => {
+                println!(
+                    "{path} - processing '{child_key}' (unhandled reserved): {:?}",
+                    child_value
+                );
+
+                Err(eyre!(
+                    "processing a reserved key that should have been explicitly handled: {path}.{child_key}"
+                ))
+            }
+            _ => {
+                println!(
+                    "{path} - processing '{child_key}' (unknown): {:?}",
+                    child_value
+                );
+
+                Err(eyre!("unable to process unknown key: {path}.{child_key}"))
+            }
+        },
+    )?;
+
+    println!("{path} - state expanded");
+
+    Ok(state)
 }
 
 pub fn expand_scope<'a>(path: &str, scope: &'a mut Mapping) -> Result<&'a mut Mapping> {
@@ -125,12 +175,20 @@ pub fn expand_scope<'a>(path: &str, scope: &'a mut Mapping) -> Result<&'a mut Ma
 
                 Ok(())
             }
+            "in" => {
+                println!("{path} - processing '{child_key}' (in): {:?}", child_value);
+
+                Ok(())
+            }
             _ if constants::SCOPE_RESERVED_KEYS.contains(&child_key) => {
                 println!(
-                    "{path} - processing '{child_key}' (reserved): {:?}",
+                    "{path} - processing '{child_key}' (unhandled reserved): {:?}",
                     child_value
                 );
-                Ok(())
+
+                Err(eyre!(
+                    "processing a reserved key that should have been explicitly handled: {path}.{child_key}"
+                ))
             }
             _ if child_value.is_mapping() => {
                 println!(
@@ -147,10 +205,11 @@ pub fn expand_scope<'a>(path: &str, scope: &'a mut Mapping) -> Result<&'a mut Ma
             }
             _ => {
                 println!(
-                    "{path} - processing '{child_key}' (custom): {:?}",
+                    "{path} - processing '{child_key}' (unknown): {:?}",
                     child_value
                 );
-                Ok(())
+
+                Err(eyre!("unable to process unknown key: {path}.{child_key}"))
             }
         },
     )?;
@@ -205,6 +264,15 @@ pub fn expand_shorthand_variables<'a>(
 
 pub fn expand_variables<'a>(path: &str, variables: &'a mut Mapping) -> Result<&'a mut Mapping> {
     println!("{path} - expanding variables");
+
+    let shorthand_variable_keys = get_shorthand_variable_keys(variables);
+    if !shorthand_variable_keys.is_empty() {
+        for var_key in shorthand_variable_keys {
+            let var_value = variables.remove(format!("${var_key}")).unwrap();
+
+            variables.insert(Value::String(var_key.clone()), var_value);
+        }
+    }
 
     yaml::map_mapping(variables, |key, value| {
         println!("{path} - processing '{key}' (variable): {:?}", value);
