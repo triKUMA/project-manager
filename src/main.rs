@@ -5,14 +5,14 @@ use serde_yaml::Mapping;
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let mut config: Mapping = yaml::load_yaml("example/project.yaml")?;
-    let normalized_config: Mapping = yaml::load_yaml("example/normalized.yaml")?;
+    let mut project_config: Mapping = yaml::load_yaml("example/project.yaml")?;
+    let normalized_project_config: Mapping = yaml::load_yaml("example/normalized.yaml")?;
 
     // println!("{:#?}\n", config);
 
-    expand::expand_yaml(&mut config)?;
+    expand::expand_project_config(&mut project_config)?;
 
-    println!("{:#?}\n", config);
+    println!("{:#?}\n", project_config);
     // println!("{:#?}\n", normalized_config);
 
     // assert_eq!(

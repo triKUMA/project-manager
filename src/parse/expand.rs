@@ -1,3 +1,6 @@
+use std::path::Path;
+
+use camino::Utf8Path;
 use color_eyre::{Result, eyre::eyre};
 use serde_yaml::{Mapping, Value};
 
@@ -12,7 +15,7 @@ use crate::{
 //   - $env built from current environment variables
 //   - $opts built from command line arguments
 
-pub fn expand_yaml(yaml: &mut Mapping) -> Result<&mut Mapping> {
+pub fn expand_project_config(yaml: &mut Mapping) -> Result<&mut Mapping> {
     let keys: Vec<Value> = yaml.keys().cloned().collect();
     for key in keys {
         if !key.is_string() {
@@ -28,15 +31,21 @@ pub fn expand_yaml(yaml: &mut Mapping) -> Result<&mut Mapping> {
             match key {
                 "workspaces" => {
                     expand_workspaces("workspaces", value_mapping)?;
+
+                    Ok(())
                 }
                 "state" => {
                     expand_state("state", value_mapping)?;
+
+                    Ok(())
                 }
                 "commands" => {
                     expand_scope("commands", value_mapping)?;
+
+                    Ok(())
                 }
-                _ => (),
-            };
+                _ => Err(eyre!("unable to process unknown key: {key}")),
+            }?;
         }
 
         Ok(())
@@ -177,6 +186,8 @@ pub fn expand_scope<'a>(path: &str, scope: &'a mut Mapping) -> Result<&'a mut Ma
             }
             "in" => {
                 println!("{path} - processing '{child_key}' (in): {:?}", child_value);
+
+                expand_potential_path(format!("{path}.{child_key}").as_str(), child_value)?;
 
                 Ok(())
             }
@@ -421,4 +432,72 @@ pub fn expand_task_collection<'a>(
     println!("{path} - task collection expanded");
 
     Ok(implicit_task_collection)
+}
+
+pub fn expand_potential_path<'a>(path: &str, _in: &'a mut Value) -> Result<&'a mut Value> {
+    if !_in.is_string() {
+        return Err(eyre!(
+            "key is invalid type in mapping: {:#?}\nkey must be a string",
+            path
+        ));
+    }
+
+    let in_str = _in.as_str().unwrap();
+
+    if let Some(in_path) = try_get_path(in_str) {
+        *_in = Value::String(
+            in_path
+                .canonicalize()?
+                .into_os_string()
+                .into_string()
+                .map_err(|_| eyre!("unable to get path string from {:?}", in_str))?,
+        )
+    }
+    // if path doesn't exist
+
+    Ok(_in)
+}
+
+pub fn try_get_path(value: &str) -> Option<&Utf8Path> {
+    // Cross-platform “pathy” heuristics:
+    // 1) absolute (Unix)   -> "/..."
+    // 2) absolute (Windows)-> "C:\..." or "C:/..."
+    // 3) UNC (Windows)     -> "\\server\share"
+    // 4) relative markers  -> "./", "../", ".\", "..\"
+    // 5) home-ish          -> "~/" or "~\"
+    // 6) contains a path separator ('/' or '\')
+
+    let path = Some(Utf8Path::new(value));
+
+    if value.starts_with('/') {
+        return path;
+    }
+    if value.starts_with("./")
+        || value.starts_with(".\\")
+        || value.starts_with("../")
+        || value.starts_with("..\\")
+    {
+        return path;
+    }
+    if value.starts_with("~/") || value.starts_with("~\\") {
+        return path;
+    }
+    if value.contains('/') || value.contains('\\') {
+        return path;
+    }
+    // Windows drive letter "C:\..." or "C:/..."
+    let bytes = value.as_bytes();
+    if bytes.len() >= 3
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+        && bytes[0].is_ascii_alphabetic()
+    {
+        return path;
+    }
+    // UNC path
+    if value.starts_with(r"\\") {
+        return path;
+    }
+
+    None
 }

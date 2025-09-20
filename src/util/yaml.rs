@@ -33,22 +33,22 @@ pub fn soft_merge_mappings(base: &mut Mapping, merger: &Mapping) {
     }
 }
 
-pub fn map_mapping<F>(yaml: &mut Mapping, mut value_processor: F) -> Result<&mut Mapping>
+pub fn map_mapping<F>(mapping: &mut Mapping, mut value_processor: F) -> Result<&mut Mapping>
 where
     F: FnMut(&str, &mut Value) -> Result<()>,
 {
-    let keys: Vec<Value> = yaml.keys().cloned().collect();
+    let keys: Vec<Value> = mapping.keys().cloned().collect();
     for key in keys {
         if !key.is_string() {
             return Err(eyre!(
-                "invalid root key in yaml: {:#?}\nroot key must be a string",
+                "key is invalid type in mapping: {:#?}\nkey must be a string",
                 key
             ));
         }
 
         // Process the value using the provided closure
-        value_processor(key.as_str().unwrap(), &mut yaml[key.clone()])?;
+        value_processor(key.as_str().unwrap(), &mut mapping[key.clone()])?;
     }
 
-    Ok(yaml)
+    Ok(mapping)
 }
