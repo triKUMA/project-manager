@@ -22,6 +22,7 @@ lto = "thin"
 [dependencies]
 camino = "1.2.0"
 color-eyre = "0.6.5"
+dunce = "1.0.5"
 serde = { version = "1.0.223", features = ["derive"] }
 serde_qs = "0.15.0"
 serde_with = "3.14.0"
