@@ -28,7 +28,7 @@ pub fn try_get_path(value: &str, working_dir: Option<String>) -> Result<Option<U
         .map_err(|err| eyre!("unable to process path: '{value}'\n{err}"))?;
 
     let path = Utf8PathBuf::from_path_buf(canon_path)
-        .map_err(|_| eyre!("unable to process non UTF-8 path: {:?}", value))?;
+        .map_err(|_| eyre!("unable to process non UTF-8 path: {value:?}"))?;
 
     Ok(Some(path))
 }

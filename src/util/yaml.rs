@@ -41,8 +41,7 @@ where
     for key in keys {
         if !key.is_string() {
             return Err(eyre!(
-                "key is invalid type in mapping: {:#?}\nkey must be a string",
-                key
+                "key is invalid type in mapping: {key:#?}\nkey must be a string",
             ));
         }
 

@@ -14,16 +14,12 @@ fn main() -> Result<()> {
     let project_config_path_dir_str = project_config_path
         .parent()
         .ok_or_else(|| {
-            eyre!(
-                "unable to get directory for config file path: '{}'",
-                project_config_path_str
-            )
+            eyre!("unable to get directory for config file path: '{project_config_path_str}'",)
         })?
         .to_path_buf()
         .into_string();
 
-    println!("config path: {project_config_path_str}");
-    println!("config dir: {project_config_path_dir_str}");
+    println!("processing config file: '{project_config_path_str}'");
 
     let mut project_config: Mapping = yaml::load_yaml(&project_config_path_str)?;
     // let normalized_project_config: Mapping = yaml::load_yaml("example/normalized.yaml")?;

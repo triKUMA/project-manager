@@ -1,3 +1,4 @@
+use camino::Utf8PathBuf;
 use color_eyre::{Result, eyre::eyre};
 use serde_yaml::{Mapping, Value};
 
@@ -20,8 +21,7 @@ pub fn expand_project_config<'a>(
     for key in keys {
         if !key.is_string() {
             return Err(eyre!(
-                "invalid root key in yaml: {:#?}\nroot key must be a string",
-                key
+                "invalid root key in yaml: {key:#?}\nroot key must be a string"
             ));
         }
     }
@@ -66,9 +66,23 @@ pub fn expand_workspaces<'a>(
     println!("{path} - expanding workspaces");
 
     yaml::map_mapping(workspaces, |key, value| {
-        expand_potential_path(format!("{path}.{key}").as_str(), config_dir, value)?;
+        println!("{path} - processing '{key}' (workspace): {value:?}");
 
-        Ok(())
+        if !value.is_string() {
+            return Err(eyre!(
+                "key value is invalid type in mapping: {key:#?}\nkey value must be a string"
+            ));
+        }
+
+        let value_str = value.as_str().unwrap();
+
+        if let Some(path) = path_util::try_get_path(value_str, Some(config_dir.to_string()))? {
+            process_path(value, path)?;
+
+            Ok(())
+        } else {
+            Err(eyre!("unable to get path for '{value_str}'"))
+        }
     })?;
 
     println!("{path} - workspaces expanded");
@@ -86,7 +100,7 @@ pub fn expand_state<'a>(path: &str, state: &'a mut Mapping) -> Result<&'a mut Ma
 
     yaml::map_mapping(state, |key, value| match desugar::get_base_key(key, true) {
         "variables" => {
-            println!("{path} - processing '{key}' (variables): {:?}", value);
+            println!("{path} - processing '{key}' (variables): {value:?}");
 
             expand_variables(
                 format!("{path}.{}", desugar::get_base_key(key, true)).as_str(),
@@ -96,17 +110,14 @@ pub fn expand_state<'a>(path: &str, state: &'a mut Mapping) -> Result<&'a mut Ma
             Ok(())
         }
         _ if constants::STATE_RESERVED_KEYS.contains(&key) => {
-            println!(
-                "{path} - processing '{key}' (unhandled reserved): {:?}",
-                value
-            );
+            println!("{path} - processing '{key}' (unhandled reserved): {value:?}");
 
             Err(eyre!(
                 "processing a reserved key that should have been explicitly handled: {path}.{key}"
             ))
         }
         _ => {
-            println!("{path} - processing '{key}' (unknown): {:?}", value);
+            println!("{path} - processing '{key}' (unknown): {value:?}");
 
             Err(eyre!("unable to process unknown key: {path}.{key}"))
         }
@@ -143,7 +154,7 @@ pub fn expand_scope<'a>(
 
     yaml::map_mapping(scope, |key, value| match desugar::get_base_key(key, true) {
         "variables" => {
-            println!("{path} - processing '{key}' (variables): {:?}", value);
+            println!("{path} - processing '{key}' (variables): {value:?}");
 
             expand_variables(
                 format!("{path}.{}", desugar::get_base_key(key, true)).as_str(),
@@ -153,7 +164,7 @@ pub fn expand_scope<'a>(
             Ok(())
         }
         "pre" => {
-            println!("{path} - processing '{key}' (pre): {:?}", value);
+            println!("{path} - processing '{key}' (pre): {value:?}");
 
             expand_task_collection(
                 format!("{path}.{}", desugar::get_base_key(key, true)).as_str(),
@@ -163,7 +174,7 @@ pub fn expand_scope<'a>(
             Ok(())
         }
         "post" => {
-            println!("{path} - processing '{key}' (post): {:?}", value);
+            println!("{path} - processing '{key}' (post): {value:?}");
 
             expand_task_collection(
                 format!("{path}.{}", desugar::get_base_key(key, true)).as_str(),
@@ -173,7 +184,7 @@ pub fn expand_scope<'a>(
             Ok(())
         }
         "commands" => {
-            println!("{path} - processing '{key}' (commands): {:?}", value);
+            println!("{path} - processing '{key}' (commands): {value:?}");
 
             expand_commands(
                 format!("{path}.{}", desugar::get_base_key(key, true)).as_str(),
@@ -183,24 +194,21 @@ pub fn expand_scope<'a>(
             Ok(())
         }
         "in" => {
-            println!("{path} - processing '{key}' (in): {:?}", value);
+            println!("{path} - processing '{key}' (in): {value:?}");
 
             expand_potential_path(format!("{path}.{key}").as_str(), config_dir, value)?;
 
             Ok(())
         }
         _ if constants::SCOPE_RESERVED_KEYS.contains(&key) => {
-            println!(
-                "{path} - processing '{key}' (unhandled reserved): {:?}",
-                value
-            );
+            println!("{path} - processing '{key}' (unhandled reserved): {value:?}");
 
             Err(eyre!(
                 "processing a reserved key that should have been explicitly handled: {path}.{key}"
             ))
         }
         _ if value.is_mapping() => {
-            println!("{path} - processing '{key}' (sub scope): {:?}", value);
+            println!("{path} - processing '{key}' (sub scope): {value:?}");
 
             expand_scope(
                 format!("{path}.{}", desugar::get_base_key(key, true)).as_str(),
@@ -211,7 +219,7 @@ pub fn expand_scope<'a>(
             Ok(())
         }
         _ => {
-            println!("{path} - processing '{key}' (unknown): {:?}", value);
+            println!("{path} - processing '{key}' (unknown): {value:?}");
 
             Err(eyre!("unable to process unknown key: {path}.{key}"))
         }
@@ -251,10 +259,7 @@ pub fn expand_shorthand_variables<'a>(
     for var_key in shorthand_variable_keys {
         let var_key_value = scope.remove(format!("${}", var_key)).unwrap();
 
-        println!(
-            "{scope_path} - processing '${var_key}' (variable): {:?}",
-            var_key_value
-        );
+        println!("{scope_path} - processing '${var_key}' (variable): {var_key_value:?}");
 
         scope["variables"]
             .as_mapping_mut()
@@ -278,7 +283,7 @@ pub fn expand_variables<'a>(path: &str, variables: &'a mut Mapping) -> Result<&'
     }
 
     yaml::map_mapping(variables, |key, value| {
-        println!("{path} - processing '{key}' (variable): {:?}", value);
+        println!("{path} - processing '{key}' (variable): {value:?}");
 
         let mut var_mapping = Mapping::new();
         var_mapping.insert(Value::String("value".to_string()), value.clone());
@@ -317,7 +322,7 @@ pub fn expand_run<'a>(
 
     let run_val = scope.remove(run_key).unwrap();
 
-    println!("{scope_path} - processing '{run_key}' (run): {:?}", run_val);
+    println!("{scope_path} - processing '{run_key}' (run): {run_val:?}");
 
     scope["commands"].as_mapping_mut().unwrap().insert(
         Value::String(run_key.replace("run", ".").to_string()),
@@ -360,8 +365,7 @@ pub fn expand_implicit_commands<'a>(
         let implicit_command_key_value = scope.remove(implicit_command_key.clone()).unwrap();
 
         println!(
-            "{scope_path} - processing '{implicit_command_key}' (implicit command): {:?}",
-            implicit_command_key_value
+            "{scope_path} - processing '{implicit_command_key}' (implicit command): {implicit_command_key_value:?}",
         );
 
         scope["commands"].as_mapping_mut().unwrap().insert(
@@ -377,7 +381,7 @@ pub fn expand_commands<'a>(path: &str, commands: &'a mut Mapping) -> Result<&'a 
     println!("{path} - expanding commands");
 
     yaml::map_mapping(commands, |key, value| {
-        println!("{path} - processing '{key}' (command): {:?}", value);
+        println!("{path} - processing '{key}' (command): {value:?}");
 
         expand_task_collection(
             format!("{path}.{}", if key == "." { "\".\"" } else { key }).as_str(),
@@ -416,8 +420,7 @@ pub fn expand_task_collection<'a>(
 
     if !task_collection.is_sequence() {
         return Err(eyre!(
-            "invalid command format in yaml: {:#?}\ncommand must be a string or array of strings",
-            task_collection
+            "invalid command format in yaml: {task_collection:#?}\ncommand must be a string or array of strings",
         ));
     }
 
@@ -427,16 +430,15 @@ pub fn expand_task_collection<'a>(
 }
 
 pub fn expand_potential_path<'a>(
-    path: &str,
+    key_path: &str,
     config_dir: &str,
     value: &'a mut Value,
 ) -> Result<&'a mut Value> {
-    println!("{path} - expanding path/workspace");
+    println!("{key_path} - expanding path/workspace");
 
     if !value.is_string() {
         return Err(eyre!(
-            "key is invalid type in mapping: {:#?}\nkey must be a string",
-            path
+            "key value is invalid type in mapping: {key_path:#?}\nkey value must be a string"
         ));
     }
 
@@ -447,18 +449,26 @@ pub fn expand_potential_path<'a>(
     }
 
     if let Some(path) = path_util::try_get_path(value_str, Some(config_dir.to_string()))? {
-        if !path.is_dir() {
-            return Err(eyre!(
-                "invalid working directory path: {value_str}\npath must be to a directory"
-            ));
-        }
-
-        *value = Value::String(path.into_string())
+        process_path(value, path)?;
     } else {
         *value = Value::String(format!("ws:{value_str}"));
     }
 
-    println!("{path} - path/workspace expanded");
+    println!("{key_path} - path/workspace expanded");
+
+    Ok(value)
+}
+
+pub fn process_path(value: &mut Value, path: Utf8PathBuf) -> Result<&mut Value> {
+    let path_str = path.clone().into_string();
+
+    if !path.is_dir() {
+        return Err(eyre!(
+            "invalid working directory path: {path_str}\npath must be to a directory"
+        ));
+    }
+
+    *value = Value::String(path_str);
 
     Ok(value)
 }
