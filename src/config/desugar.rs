@@ -23,12 +23,14 @@ pub fn desugar_mapping<'a>(
         println!("{path} - desugaring '{key}'");
 
         let (base_key, mut shorthand_props) = normalize_key(key)?;
-        expand::expand_scope(
-            format!("{path}.{base_key}[shorthand_props]").as_str(),
-            config_dir,
-            &mut shorthand_props,
-            false,
-        )?;
+        if !shorthand_props.is_empty() {
+            expand::expand_scope(
+                format!("{path}.{base_key}[shorthand_props]").as_str(),
+                config_dir,
+                &mut shorthand_props,
+                false,
+            )?;
+        }
 
         if mapping.get(key).is_some() {
             if key == base_key {
