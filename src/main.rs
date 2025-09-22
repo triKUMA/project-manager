@@ -7,7 +7,7 @@ fn main() -> Result<()> {
     let project_config = parse::parse_project_config("./example/project.yaml")?;
     let normalized_project_config = yaml::load_yaml("./example/normalized.yaml")?;
 
-    // println!("{:#?}\n", project_config);
+    println!("{:#?}\n", project_config);
     // println!("{:#?}\n", normalized_project_config);
 
     assert_eq!(

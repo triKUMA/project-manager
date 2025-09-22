@@ -30,38 +30,66 @@ pub fn desugar_mapping<'a>(
             false,
         )?;
 
-        if let Some(mut value) = mapping.remove(key) {
-            if let Some(value_mapping) = value.as_mapping_mut() {
-                yaml::soft_merge_mappings(value_mapping, &shorthand_props);
-
-                desugar_mapping(
-                    format!("{path}.{base_key}").as_str(),
-                    config_dir,
-                    value_mapping,
-                )?;
-            } else if let Some(value_sequence) = value.as_sequence_mut() {
-                for (i, item) in value_sequence.iter_mut().enumerate() {
-                    if let Some(item_mapping) = item.as_mapping_mut() {
-                        yaml::soft_merge_mappings(item_mapping, &shorthand_props);
-
+        if mapping.get(key).is_some() {
+            if key == base_key {
+                if let Some(value) = mapping.get_mut(key) {
+                    match value {
+                        Value::Mapping(value_mapping) => {
+                            desugar_mapping(
+                                format!("{path}.{base_key}").as_str(),
+                                config_dir,
+                                value_mapping,
+                            )?;
+                        }
+                        Value::Sequence(value_sequence) => {
+                            for (i, item) in value_sequence.iter_mut().enumerate() {
+                                if let Some(item_mapping) = item.as_mapping_mut() {
+                                    desugar_mapping(
+                                        format!("{path}.{base_key}[{i}]").as_str(),
+                                        config_dir,
+                                        item_mapping,
+                                    )?;
+                                }
+                            }
+                        }
+                        _ => { /* nothing to do for scalars when no shorthand */ }
+                    }
+                }
+            } else if let Some(mut value) = mapping.remove(key) {
+                match &mut value {
+                    Value::Mapping(value_mapping) => {
+                        yaml::soft_merge_mappings(value_mapping, &shorthand_props);
                         desugar_mapping(
-                            format!("{path}.{base_key}[{i}]").as_str(),
+                            format!("{path}.{base_key}").as_str(),
                             config_dir,
-                            item_mapping,
+                            value_mapping,
                         )?;
-                    } else if key != base_key {
+                    }
+                    Value::Sequence(value_sequence) => {
+                        for (i, item) in value_sequence.iter_mut().enumerate() {
+                            if let Some(item_mapping) = item.as_mapping_mut() {
+                                yaml::soft_merge_mappings(item_mapping, &shorthand_props);
+                                desugar_mapping(
+                                    format!("{path}.{base_key}[{i}]").as_str(),
+                                    config_dir,
+                                    item_mapping,
+                                )?;
+                            } else {
+                                return Err(eyre!(
+                                    "unable to merge shorthand props into key value for key '{path}.{base_key}'. value is invalid type (must be mapping or sequence)"
+                                ));
+                            }
+                        }
+                    }
+                    _ => {
                         return Err(eyre!(
                             "unable to merge shorthand props into key value for key '{path}.{base_key}'. value is invalid type (must be mapping or sequence)"
                         ));
                     }
                 }
-            } else if key != base_key {
-                return Err(eyre!(
-                    "unable to merge shorthand props into key value for key '{path}.{base_key}'. value is invalid type (must be mapping or sequence)"
-                ));
-            }
 
-            mapping.insert(Value::String(base_key.to_string()), value);
+                mapping.insert(Value::String(base_key.to_string()), value);
+            }
         }
     }
 
@@ -97,14 +125,18 @@ fn normalize_key(key: &str) -> Result<(&str, Mapping)> {
         query = serde_qs::from_str(key_parts[1])?;
 
         for (_, v) in query.iter_mut() {
-            if let Some(str_val) = v.as_str() {
-                if str_val.is_empty() {
-                    *v = Value::Bool(true);
-                } else {
-                    *v = serde_yaml::from_str::<Value>(str_val).map_err(|e| eyre!(e))?;
+            match v {
+                Value::String(v_str) => {
+                    if v_str.is_empty() {
+                        *v = Value::Bool(true);
+                    } else {
+                        *v = serde_yaml::from_str::<Value>(v_str).map_err(|e| eyre!(e))?;
+                    }
                 }
-            } else if let Some(sequence) = v.as_sequence_mut() {
-                yaml::parse_unserialized_sequence(sequence).map_err(|e| eyre!(e))?;
+                Value::Sequence(v_seq) => {
+                    yaml::parse_unserialized_sequence(v_seq).map_err(|e| eyre!(e))?;
+                }
+                _ => {}
             }
         }
     }
