@@ -40,7 +40,7 @@ pub fn expand_project_config<'a>(
                     Ok(())
                 }
                 "commands" => {
-                    expand_scope("commands", config_dir, value_mapping)?;
+                    expand_scope("commands", config_dir, value_mapping, true)?;
 
                     Ok(())
                 }
@@ -132,6 +132,7 @@ pub fn expand_scope<'a>(
     path: &str,
     config_dir: &str,
     scope: &'a mut Mapping,
+    strict: bool,
 ) -> Result<&'a mut Mapping> {
     println!("{path} - expanding scope");
 
@@ -214,6 +215,7 @@ pub fn expand_scope<'a>(
                 format!("{path}.{}", desugar::get_base_key(key, true)).as_str(),
                 config_dir,
                 value.as_mapping_mut().unwrap(),
+                strict,
             )?;
 
             Ok(())
@@ -221,7 +223,11 @@ pub fn expand_scope<'a>(
         _ => {
             println!("{path} - processing '{key}' (unknown): {value:?}");
 
-            Err(eyre!("unable to process unknown key: {path}.{key}"))
+            if strict {
+                Err(eyre!("unable to process unknown key: {path}.{key}"))
+            } else {
+                Ok(())
+            }
         }
     })?;
 

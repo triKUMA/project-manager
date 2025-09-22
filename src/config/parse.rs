@@ -2,7 +2,7 @@ use color_eyre::{Result, eyre::eyre};
 use serde_yaml::Mapping;
 
 use crate::{
-    config::expand,
+    config::{desugar, expand},
     util::{path as path_util, yaml},
 };
 
@@ -23,6 +23,10 @@ pub fn parse_project_config(path: &str) -> Result<Mapping> {
     let mut project_config: Mapping = yaml::load_yaml(&project_config_path_str)?;
 
     expand::expand_project_config(&project_config_path_dir_str, &mut project_config)?;
+
+    if let Some(commands) = project_config["commands"].as_mapping_mut() {
+        desugar::desugar_mapping("commands", &project_config_path_dir_str, commands)?;
+    }
 
     Ok(project_config)
 }
