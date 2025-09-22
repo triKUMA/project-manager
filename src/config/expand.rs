@@ -3,7 +3,7 @@ use color_eyre::{Result, eyre::eyre};
 use serde_yaml::{Mapping, Value};
 
 use crate::{
-    parse::{constants, desugar},
+    config::{constants, desugar},
     util::{path as path_util, yaml},
 };
 

@@ -1,40 +1,19 @@
-use color_eyre::{Result, eyre::eyre};
-use project_manager::{
-    parse::expand,
-    util::{path::try_get_path, yaml},
-};
-use serde_yaml::Mapping;
+use color_eyre::Result;
+use project_manager::config::parse;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let project_config_path = try_get_path("example/project.yaml", None)?
-        .ok_or_else(|| eyre!("unable to find project.yaml"))?;
-    let project_config_path_str = project_config_path.clone().into_string();
-    let project_config_path_dir_str = project_config_path
-        .parent()
-        .ok_or_else(|| {
-            eyre!("unable to get directory for config file path: '{project_config_path_str}'",)
-        })?
-        .to_path_buf()
-        .into_string();
-
-    println!("processing config file: '{project_config_path_str}'");
-
-    let mut project_config: Mapping = yaml::load_yaml(&project_config_path_str)?;
-    // let normalized_project_config: Mapping = yaml::load_yaml("example/normalized.yaml")?;
-
-    // println!("{:#?}\n", config);
-
-    expand::expand_project_config(&project_config_path_dir_str, &mut project_config)?;
+    let project_config = parse::parse_project_config("example/project.yaml");
+    // let normalized_project_config = parse_project_config("example/normalized.yaml");
 
     println!("{:#?}\n", project_config);
-    // println!("{:#?}\n", normalized_config);
+    // println!("{:#?}\n", normalized_project_config);
 
     // assert_eq!(
-    //     config, normalized_config,
+    //     config, normalized_project_config,
     //     "configs are not equal\nprocessed config: {:#?}\nexpected config: {:#?}",
-    //     config, normalized_config
+    //     config, normalized_project_config
     // );
 
     Ok(())

@@ -1,0 +1,28 @@
+use color_eyre::{Result, eyre::eyre};
+use serde_yaml::Mapping;
+
+use crate::{
+    config::expand,
+    util::{path as path_util, yaml},
+};
+
+pub fn parse_project_config(path: &str) -> Result<Mapping> {
+    let project_config_path =
+        path_util::try_get_path(path, None)?.ok_or_else(|| eyre!("unable to find '{path}'"))?;
+    let project_config_path_str = project_config_path.clone().into_string();
+    let project_config_path_dir_str = project_config_path
+        .parent()
+        .ok_or_else(|| {
+            eyre!("unable to get directory for config file path: '{project_config_path_str}'",)
+        })?
+        .to_path_buf()
+        .into_string();
+
+    println!("processing config file: '{project_config_path_str}'");
+
+    let mut project_config: Mapping = yaml::load_yaml(&project_config_path_str)?;
+
+    expand::expand_project_config(&project_config_path_dir_str, &mut project_config)?;
+
+    Ok(project_config)
+}
