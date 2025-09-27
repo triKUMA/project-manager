@@ -1,3 +1,5 @@
+use std::{collections::HashMap, fs};
+
 use camino::{Utf8Path, Utf8PathBuf};
 use color_eyre::{Result, eyre::eyre};
 
@@ -84,4 +86,32 @@ fn expand_home(value: &str) -> Result<String> {
     } else {
         Ok(value.to_string())
     }
+}
+
+pub fn get_sub_directories(path: &str) -> Result<HashMap<String, String>> {
+    let working_dir = Utf8Path::new(path);
+
+    let mut sub_dirs = HashMap::new();
+
+    for entry in fs::read_dir(working_dir)? {
+        let entry = entry?;
+        let sub_path = entry.path();
+        if !sub_path.is_dir() {
+            continue;
+        }
+
+        let dir_name = Utf8PathBuf::from_path_buf(entry.path())
+            .map_err(|_| eyre!("unable to process non UTF-8 path"))?
+            .file_name()
+            .unwrap()
+            .to_string();
+
+        let canonical_path = Utf8PathBuf::from_path_buf(dunce::canonicalize(entry.path())?)
+            .map_err(|_| eyre!("unable to process non UTF-8 path"))?
+            .into_string();
+
+        sub_dirs.insert(dir_name, canonical_path);
+    }
+
+    Ok(sub_dirs)
 }
