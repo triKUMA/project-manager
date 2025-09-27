@@ -390,7 +390,15 @@ pub fn expand_commands<'a>(path: &str, commands: &'a mut Mapping) -> Result<&'a 
         println!("{path} - processing '{key}' (command): {value:?}");
 
         expand_task_collection(
-            format!("{path}.{}", if key == "." { "\".\"" } else { key }).as_str(),
+            format!(
+                "{path}.{}",
+                if key == "." {
+                    "\".\""
+                } else {
+                    desugar::get_base_key(key, true)
+                }
+            )
+            .as_str(),
             value,
         )?;
 

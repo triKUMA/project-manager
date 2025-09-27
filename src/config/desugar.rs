@@ -38,7 +38,11 @@ pub fn desugar_mapping<'a>(
                     match value {
                         Value::Mapping(value_mapping) => {
                             desugar_mapping(
-                                format!("{path}.{base_key}").as_str(),
+                                format!(
+                                    "{path}.{}",
+                                    if base_key == "." { "\".\"" } else { base_key }
+                                )
+                                .as_str(),
                                 config_dir,
                                 value_mapping,
                             )?;
@@ -47,7 +51,11 @@ pub fn desugar_mapping<'a>(
                             for (i, item) in value_sequence.iter_mut().enumerate() {
                                 if let Some(item_mapping) = item.as_mapping_mut() {
                                     desugar_mapping(
-                                        format!("{path}.{base_key}[{i}]").as_str(),
+                                        format!(
+                                            "{path}.{}[{i}]",
+                                            if base_key == "." { "\".\"" } else { base_key }
+                                        )
+                                        .as_str(),
                                         config_dir,
                                         item_mapping,
                                     )?;
