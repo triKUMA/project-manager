@@ -1,6 +1,6 @@
 use camino::Utf8PathBuf;
 use color_eyre::{Result, eyre::eyre};
-use serde_yaml::{Mapping, Value};
+use serde_yaml::{Mapping, Sequence, Value};
 
 use crate::{
     config::{constants, desugar},
@@ -432,11 +432,28 @@ pub fn expand_task_collection<'a>(
         *task_collection = Value::Sequence(vec![task_collection.clone()]);
     }
 
-    if !task_collection.is_sequence() {
+    if !task_collection.is_sequence()
+        || !task_collection
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .all(|i| i.is_string())
+    {
         return Err(eyre!(
             "invalid command format in yaml: {task_collection:#?}\ncommand must be a string or array of strings",
         ));
     }
+
+    let task_sequence = task_collection.as_sequence_mut().unwrap();
+    *task_sequence = task_sequence
+        .iter_mut()
+        .flat_map(|i| {
+            i.as_str()
+                .unwrap()
+                .split("&&")
+                .map(|s| Value::String(s.trim().to_string()))
+        })
+        .collect();
 
     println!("{path} - task collection expanded");
 
