@@ -8,10 +8,7 @@ fn main() -> Result<()> {
 
     println!("\n{:#?}", project_config);
 
-    // let arg_tokens = program::args::tokenize_args(std::env::args())?;
-    // for token in arg_tokens {
-    //     println!("{token:?}");
-    // }
+    program::cli::run(std::env::args(), &project_config)?;
 
     Ok(())
 }

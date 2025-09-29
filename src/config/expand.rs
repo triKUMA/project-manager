@@ -1,6 +1,6 @@
 use camino::Utf8PathBuf;
 use color_eyre::{Result, eyre::eyre};
-use serde_yaml::{Mapping, Sequence, Value};
+use serde_yaml::{Mapping, Value};
 
 use crate::{
     config::{constants, desugar},
