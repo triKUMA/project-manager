@@ -1,42 +1,7 @@
-use std::env::Args;
-
-use color_eyre::eyre::{Result, eyre};
+use color_eyre::eyre::Result;
 use serde_yaml::Mapping;
 
-use crate::{
-    program::args::{self, ArgToken},
-    program::commands,
-};
-
-pub fn run(args: Args, config: &Mapping) -> Result<()> {
-    let arg_tokens = args::tokenize_args(args)?;
-
-    let initial_scope = get_initial_scope_from_args(arg_tokens.clone())?;
-
-    // process through initial flags/params to build initial scope
-
-    let mut args_iter = arg_tokens.iter().peekable();
-
-    if !matches!(args_iter.peek(), Some(ArgToken::Constant(_))) {
-        return Err(eyre!("unexpected end of command, expected command name"));
-    }
-
-    let command_name = match args_iter.next().unwrap() {
-        ArgToken::Constant(name) => name,
-        _ => unreachable!(),
-    };
-
-    match command_name.as_str() {
-        "list" => {
-            commands::list::list_commands(config)?;
-
-            Ok(())
-        }
-        _ => Err(eyre!("unknown command: {}", command_name)),
-    }?;
-
-    Ok(())
-}
+use crate::program::args::{self, ArgToken};
 
 pub fn get_initial_scope_from_args(args: Vec<ArgToken>) -> Result<Mapping> {
     let mut args_iter = args.iter().peekable();

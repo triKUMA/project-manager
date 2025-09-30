@@ -3,10 +3,7 @@ use serde_yaml::{Mapping, Value};
 
 use crate::config::constants;
 
-pub fn list_commands(config: &Mapping) -> Result<()> {
-    // TODO: this should be replaced with the config item in the global config file later on
-    let scope_separator = "::";
-
+pub fn run(config: &Mapping) -> Result<()> {
     let mut commands = Vec::new();
 
     let mut scopes_to_process: Vec<(String, &Mapping)> = Vec::new();
@@ -24,7 +21,7 @@ pub fn list_commands(config: &Mapping) -> Result<()> {
                 } else if key == "." {
                     scope.0.clone()
                 } else {
-                    format!("{}{scope_separator}{}", scope.0, key)
+                    format!("{}{}{}", scope.0, constants::SCOPE_SEPARATOR, key)
                 });
             }
         }
@@ -42,7 +39,7 @@ pub fn list_commands(config: &Mapping) -> Result<()> {
                     if scope.0 == "root" {
                         key.to_string()
                     } else {
-                        format!("{}{scope_separator}{}", scope.0, key)
+                        format!("{}{}{}", scope.0, constants::SCOPE_SEPARATOR, key)
                     },
                     value.as_mapping().unwrap(),
                 ));
