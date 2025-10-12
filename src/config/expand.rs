@@ -201,6 +201,7 @@ pub fn expand_scope<'a>(
 
 			Ok(())
 		}
+		"-in" | "-pre" | "-post" => Ok(()),
 		_ if constants::SCOPE_RESERVED_KEYS.contains(&key) => {
 			println!("{path} - processing '{key}' (unhandled reserved): {value:?}");
 

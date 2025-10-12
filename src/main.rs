@@ -41,14 +41,14 @@ fn main() -> Result<()> {
 				_ => Err(eyre!("no or invalid command name provided")),
 			}?;
 
-			commands::run_command::run(command, &initial_scope, &project_config)?;
+			commands::run_command::run(command, initial_scope, &project_config)?;
 
 			Ok(())
 		}
 		_ => {
 			let project_config = parse::parse_project_config("./example/project.yaml")?;
 
-			commands::run_command::run(command_name, &initial_scope, &project_config)?;
+			commands::run_command::run(command_name, initial_scope, &project_config)?;
 
 			Ok(())
 		}
