@@ -25,7 +25,15 @@ impl CommandScope {
 	pub fn accumulate_from_mapping(&mut self, mapping: &Mapping) {
 		for (k, v) in mapping {
 			match k.as_str().unwrap() {
-				"variables" => {}
+				"variables" => {
+					let variables_mapping = v.as_mapping().unwrap();
+					for (k, v) in variables_mapping.iter() {
+						self.variables.insert(
+							k.as_str().unwrap().to_string(),
+							v.as_mapping().unwrap().get("value").unwrap().clone()
+						);
+					}
+				}
 				"-in" => {
 					self.working_dir = None;
 				}
